@@ -68,6 +68,77 @@ RAPseq_workflow
     └── snakefile
 ```
 
+To check the different steps of the workflow use:
+
+```shell
+$ snakemake -l
+all
+fastqc_raw
+    
+    Runs fastqc on raw fq files.
+    
+trim
+    
+    Uses cutadapt to trim adapter sequences from raw fq files
+    
+fastqc_trimmed
+    
+    Runs fastqc on trimmed fq files.
+    
+extract_umi
+    
+    Extracts UMI form first 4nt in R1 and R2 and adds it to header.
+    
+remove_rRNA_tRNA
+    
+    Removes rRNA and tRNA mapping reads from fq files.
+    
+unique_mapping_deduplicated
+    
+    Aligns reads to reference genome, selects uniquely mapping reads and removes PCR duplicates.
+    
+get_scaled_bedgraph
+    
+    Generates scaled genome coverage profiles using a scaling factor relative to the sequencing depth of the HaloTag control library.
+    
+subtract_HALO_vs_INPUT
+    
+    Subtracts the HaloTag signal from Input and vice versa.
+    
+subtract_HALO_INPUT
+    
+    Subtracts the HaloTag and Input signal from RBP coverage files.
+    
+call_peaks
+    
+    Finds candidate regions for RBP-RNA interactions.
+    
+get_consensus_peaks
+    
+    Retrieves consensus RBP-RNA interaction regions across replicates.
+    
+get_pvalues
+    
+    Calculates p-values measuring signal enrichment in RBP coverage files compared to that of the HaloTag control 
+    and while controlling for Input background.
+    
+get_mean_summits
+    
+    Calculates summit position of peaks.
+    
+get_stranded_counts
+    
+    Retrieves strand-specific counts per peak summit.
+    
+score_regions
+    
+    Add scoring information to peak summit files.
+    
+get_sequences
+    
+    Retrieves 200nt sequences around peak summits and of control regions 1000nt downstream of these.
+```
+
 
 ## Results
 
