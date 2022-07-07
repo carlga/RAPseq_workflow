@@ -1,0 +1,38 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 4
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:48:50 2022]
+rule fastqc_trimmed:
+    input: ../data/fastq_trimmed/IGF2BP1_rep2_R1_trimmed.fastq.gz
+    output: ../analyses/fastqc_trimmed/IGF2BP1_rep2_R1_trimmed_fastqc.html
+    jobid: 0
+    wildcards: name=IGF2BP1_rep2, read=R1
+    threads: 4
+    resources: mem_mb=4000, disk_mb=1000, tmpdir=/tmp, cpus=4, time_min=20
+
+Started analysis of IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 5% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 10% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 15% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 20% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 25% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 30% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 35% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 40% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 45% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 50% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 55% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 60% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 65% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 70% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 75% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 80% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 85% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 90% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+Approx 95% complete for IGF2BP1_rep2_R1_trimmed.fastq.gz
+[Tue Jul  5 17:48:56 2022]
+Finished job 0.
+1 of 1 steps (100%) done

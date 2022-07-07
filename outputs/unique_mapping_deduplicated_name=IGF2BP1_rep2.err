@@ -1,0 +1,34 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 12
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:49:41 2022]
+rule unique_mapping_deduplicated:
+    input: ../data/fastq_trimmed_umied_filt/IGF2BP1_rep2_R1_trimmed_umied_filt.fastq.gz, ../data/fastq_trimmed_umied_filt/IGF2BP1_rep2_R2_trimmed_umied_filt.fastq.gz, ../data/genome_ref
+    output: ../analyses/aligned_uniq_dedup/IGF2BP1_rep2_trimmed_umied_filt_uniqmap_rmdup.bam, ../analyses/aligned_uniq_dedup/IGF2BP1_rep2_trimmed_umied_filt_uniqmap_rmdup.bam.bai, ../analyses/aligned_uniq_dedup/IGF2BP1_rep2_uniqmap_read_counts.txt, ../analyses/aligned_uniq_dedup/IGF2BP1_rep2_uniqmap_rmdup_read_counts.txt
+    jobid: 0
+    wildcards: name=IGF2BP1_rep2
+    threads: 12
+    resources: mem_mb=25000, disk_mb=1000, tmpdir=/tmp, cpus=12, time_min=300
+
+86519 reads; of these:
+  86519 (100.00%) were paired; of these:
+    80374 (92.90%) aligned concordantly 0 times
+    2496 (2.88%) aligned concordantly exactly 1 time
+    3649 (4.22%) aligned concordantly >1 times
+    ----
+    80374 pairs aligned concordantly 0 times; of these:
+      84 (0.10%) aligned discordantly 1 time
+    ----
+    80290 pairs aligned 0 times concordantly or discordantly; of these:
+      160580 mates make up the pairs; of these:
+        153981 (95.89%) aligned 0 times
+        3337 (2.08%) aligned exactly 1 time
+        3262 (2.03%) aligned >1 times
+11.01% overall alignment rate
+[bam_sort_core] merging from 0 files and 12 in-memory blocks...
+[Tue Jul  5 17:49:47 2022]
+Finished job 0.
+1 of 1 steps (100%) done

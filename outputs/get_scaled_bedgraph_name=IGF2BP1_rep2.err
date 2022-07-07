@@ -1,0 +1,18 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 2
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:49:51 2022]
+rule get_scaled_bedgraph:
+    input: ../analyses/aligned_uniq_dedup/IGF2BP1_rep2_trimmed_umied_filt_uniqmap_rmdup.bam, ../data/scales/scales.tsv
+    output: ../analyses/scaled_bedgraph/IGF2BP1_rep2.scaled.bedgraph
+    jobid: 0
+    wildcards: name=IGF2BP1_rep2
+    threads: 2
+    resources: mem_mb=5000, disk_mb=1000, tmpdir=/tmp, cpus=2, time_min=30
+
+[Tue Jul  5 17:50:03 2022]
+Finished job 0.
+1 of 1 steps (100%) done

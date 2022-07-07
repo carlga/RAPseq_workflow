@@ -1,0 +1,22 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 2
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:51:31 2022]
+rule call_peaks:
+    input: ../analyses/subtracted_halo_input/IGF2BP1_rep2_minusHALO_minusINPUT.bdg
+    output: ../analyses/peaks/IGF2BP1_rep2_peaks.bed, ../analyses/peaks_fixed/IGF2BP1_rep2_fixed_peaks.bed
+    jobid: 0
+    wildcards: name_wo_halo_input=IGF2BP1_rep2
+    threads: 2
+    resources: mem_mb=5000, disk_mb=1000, tmpdir=/tmp, cpus=2, time_min=30
+
+INFO  @ Tue, 05 Jul 2022 17:51:32: Read and build bedGraph... 
+INFO  @ Tue, 05 Jul 2022 17:51:32: Call peaks from bedGraph... 
+INFO  @ Tue, 05 Jul 2022 17:51:32: Write peaks... 
+INFO  @ Tue, 05 Jul 2022 17:51:32: Done 
+[Tue Jul  5 17:51:32 2022]
+Finished job 0.
+1 of 1 steps (100%) done

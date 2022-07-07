@@ -1,0 +1,34 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 12
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:50:30 2022]
+rule unique_mapping_deduplicated:
+    input: ../data/fastq_trimmed_umied_filt/HALO_R1_trimmed_umied_filt.fastq.gz, ../data/fastq_trimmed_umied_filt/HALO_R2_trimmed_umied_filt.fastq.gz, ../data/genome_ref
+    output: ../analyses/aligned_uniq_dedup/HALO_trimmed_umied_filt_uniqmap_rmdup.bam, ../analyses/aligned_uniq_dedup/HALO_trimmed_umied_filt_uniqmap_rmdup.bam.bai, ../analyses/aligned_uniq_dedup/HALO_uniqmap_read_counts.txt, ../analyses/aligned_uniq_dedup/HALO_uniqmap_rmdup_read_counts.txt
+    jobid: 0
+    wildcards: name=HALO
+    threads: 12
+    resources: mem_mb=25000, disk_mb=1000, tmpdir=/tmp, cpus=12, time_min=300
+
+92394 reads; of these:
+  92394 (100.00%) were paired; of these:
+    85760 (92.82%) aligned concordantly 0 times
+    2849 (3.08%) aligned concordantly exactly 1 time
+    3785 (4.10%) aligned concordantly >1 times
+    ----
+    85760 pairs aligned concordantly 0 times; of these:
+      16 (0.02%) aligned discordantly 1 time
+    ----
+    85744 pairs aligned 0 times concordantly or discordantly; of these:
+      171488 mates make up the pairs; of these:
+        170309 (99.31%) aligned 0 times
+        570 (0.33%) aligned exactly 1 time
+        609 (0.36%) aligned >1 times
+7.84% overall alignment rate
+[bam_sort_core] merging from 0 files and 12 in-memory blocks...
+[Tue Jul  5 17:50:46 2022]
+Finished job 0.
+1 of 1 steps (100%) done

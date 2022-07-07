@@ -1,0 +1,18 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 10
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:48:01 2022]
+rule trim:
+    input: ../data/fastq_raw/IGF2BP1_rep2_R1.fastq.gz, ../data/fastq_raw/IGF2BP1_rep2_R2.fastq.gz
+    output: ../data/fastq_trimmed/IGF2BP1_rep2_R1_trimmed.fastq.gz, ../data/fastq_trimmed/IGF2BP1_rep2_R2_trimmed.fastq.gz
+    jobid: 0
+    wildcards: name=IGF2BP1_rep2
+    threads: 10
+    resources: mem_mb=20000, disk_mb=1000, tmpdir=/tmp, cpus=10, time_min=60
+
+[Tue Jul  5 17:48:05 2022]
+Finished job 0.
+1 of 1 steps (100%) done

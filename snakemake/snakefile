@@ -1,0 +1,690 @@
+import glob, re
+
+NAMES = [re.search(r'(\w+)_R1.fastq.gz',x).group(1) for x in glob.glob('../data/fastq_raw/*_R1.fastq.gz')]
+NAMES_WO_HALO_INPUT = [name for name in NAMES if name not in ('HALO', 'INPUT')]
+NAMES_WO_HALO_INPUT_NO_REP = list(set([re.search(r'(\w+)_rep*',x).group(1) for x in NAMES_WO_HALO_INPUT]))
+READS = ['R1','R2']
+
+
+rule all:
+    input:
+        expand(["../analyses/fastqc_raw/{name}_{read}_fastqc.html",
+                "../data/fastq_trimmed/{name}_{read}_trimmed.fastq.gz",
+                "../analyses/fastqc_trimmed/{name}_{read}_trimmed_fastqc.html",
+                "../data/fastq_trimmed_umied/{name}_{read}_trimmed_umied.fastq.gz",
+                "../data/fastq_trimmed_umied_filt/{name}_{read}_trimmed_umied_filt.fastq.gz",
+                "../analyses/aligned_uniq_dedup/{name}_trimmed_umied_filt_uniqmap_rmdup.bam",
+                "../analyses/scaled_bedgraph/{name}.scaled.bedgraph",
+                "../analyses/scaled_bedgraph/INPUT_minusHALO.scaled.bedgraph",
+                "../analyses/subtracted_halo_input/{name_wo_halo_input}_minusHALO_minusINPUT.bdg",
+                "../analyses/peaks_fixed/{name_wo_halo_input}_fixed_peaks.bed",
+                "../analyses/peaks_consensus/{name_wo_halo_input_no_rep}_consensus_peaks.bed",
+                "../analyses/subtracted_input_pvalues/{name_wo_halo_input}_minusINPUT_pvalues.bdg",
+                "../analyses/peaks_consensus_mean_summits/{name_wo_halo_input_no_rep}_consensus_peaks_9nt_summits.bed",
+                "../analyses/peaks_consensus_summits_stranded_counts/{name_wo_halo_input_no_rep}_cons_peaks_stranded_counts.bed",
+                "../analyses/peaks_consensus_summits_scored/{name_wo_halo_input_no_rep}_cons_peaks_scored.bed",
+                "../analyses/peaks_consensus_summits_scored_w_seqs/{name_wo_halo_input_no_rep}_cons_peaks_scored_w_seqs.bed"],
+               name=NAMES, read=READS, name_wo_halo_input=NAMES_WO_HALO_INPUT,
+               name_wo_halo_input_no_rep=NAMES_WO_HALO_INPUT_NO_REP)
+
+rule fastqc_raw:
+    """
+    Runs fastqc on raw fq files.
+    """
+    input:
+        "../data/fastq_raw/{name}_{read}.fastq.gz"
+    output:
+        "../analyses/fastqc_raw/{name}_{read}_fastqc.html"
+    params:
+        outdir="../analyses/fastqc_raw"
+    threads: 4
+    resources: cpus=4, mem_mb=4000, time_min=20
+    shell:
+        '''
+        #!/bin/bash
+        module load fastqc/0.11.9
+        
+        fastqc --threads {threads} --outdir {params.outdir} --noextract {input}
+        '''
+
+rule trim:
+    """
+    Uses cutadapt to trim adapter sequences from raw fq files
+    """
+    input:
+        fq1 = "../data/fastq_raw/{name}_R1.fastq.gz",
+        fq2 = "../data/fastq_raw/{name}_R2.fastq.gz"
+    output:
+        "../data/fastq_trimmed/{name}_R1_trimmed.fastq.gz",
+        "../data/fastq_trimmed/{name}_R2_trimmed.fastq.gz"
+    params:
+        outdir="../data/fastq_trimmed",
+        min_length=20,
+        adapter_fwd="TGGAATTCTCGGGTGCCAAGG",
+        adapter_rev="GATCGTCGGACTGTAGAACTCTGAAC"
+    threads: 10
+    resources: cpus=10, mem_mb=20000, time_min=60
+    shell:
+        '''
+        #!/bin/bash
+        module load cutadapt/2.8
+        
+        cutadapt --cores {threads} -m {params.min_length} --trim-n --nextseq-trim=20 \
+        -a {params.adapter_fwd} -A {params.adapter_rev} \
+        -o {params.outdir}/{wildcards.name}_R1_trimmed.fastq.gz \
+        -p {params.outdir}/{wildcards.name}_R2_trimmed.fastq.gz \
+        {input.fq1} {input.fq2}
+        '''
+
+rule fastqc_trimmed:
+    """
+    Runs fastqc on trimmed fq files.
+    """
+    input:
+        "../data/fastq_trimmed/{name}_{read}_trimmed.fastq.gz"
+    output:
+        "../analyses/fastqc_trimmed/{name}_{read}_trimmed_fastqc.html"
+    params:
+        outdir="../analyses/fastqc_trimmed"
+    threads: 4
+    resources: cpus=4, mem_mb=4000, time_min=20
+    shell:
+        '''
+        #!/bin/bash
+        module load fastqc/0.11.9
+        
+        fastqc --threads {threads} --outdir {params.outdir} --noextract {input}
+        '''
+
+rule extract_umi:
+    """
+    Extracts UMI form first 4nt in R1 and R2 and adds it to header.
+    """
+    input:
+        fq1 = "../data/fastq_trimmed/{name}_R1_trimmed.fastq.gz",
+        fq2 = "../data/fastq_trimmed/{name}_R2_trimmed.fastq.gz"
+    output:
+        "../data/fastq_trimmed_umied/{name}_R1_trimmed_umied.fastq.gz",
+        "../data/fastq_trimmed_umied/{name}_R2_trimmed_umied.fastq.gz"
+    params:
+        outdir="../data/fastq_trimmed_umied",
+        subs=r"""s/\t/\n/g"""
+    threads: 4
+    resources: cpus=4, mem_mb=8000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        # collapse individual read information to one line
+        zcat {input.fq1} | paste - - - - > {params.outdir}/{wildcards.name}_ALL_R1.tmp
+        zcat {input.fq2} | paste - - - - > {params.outdir}/{wildcards.name}_ALL_R2.tmp
+        
+        # remove leading and trailing 4nt stretches from sequences and qualities
+        awk '{{print $3}}' {params.outdir}/{wildcards.name}_ALL_R1.tmp | sed 's/....$//g' | sed 's/^....//g' \
+        > {params.outdir}/{wildcards.name}_FIXED_3_R1.tmp
+        awk '{{print $5}}' {params.outdir}/{wildcards.name}_ALL_R1.tmp | sed 's/....$//g' | sed 's/^....//g' \
+        > {params.outdir}/{wildcards.name}_FIXED_5_R1.tmp
+        awk '{{print $3}}' {params.outdir}/{wildcards.name}_ALL_R2.tmp | sed 's/....$//g' | sed 's/^....//g' \
+        > {params.outdir}/{wildcards.name}_FIXED_3_R2.tmp
+        awk '{{print $5}}' {params.outdir}/{wildcards.name}_ALL_R2.tmp | sed 's/....$//g' | sed 's/^....//g' \
+        > {params.outdir}/{wildcards.name}_FIXED_5_R2.tmp
+        
+        # get 8nt UMIs
+        awk '{{print $3}}' {params.outdir}/{wildcards.name}_ALL_R1.tmp | grep -o '^....' \
+        > {params.outdir}/{wildcards.name}_UMI_R1.tmp
+        awk '{{print $3}}' {params.outdir}/{wildcards.name}_ALL_R2.tmp | grep -o '^....' \
+        > {params.outdir}/{wildcards.name}_UMI_R2.tmp
+        paste -d '' {params.outdir}/{wildcards.name}_UMI_R1.tmp {params.outdir}/{wildcards.name}_UMI_R2.tmp \
+        > {params.outdir}/{wildcards.name}_UMI.tmp
+        
+        # append UMIs to headers
+        awk '{{print $1}}' {params.outdir}/{wildcards.name}_ALL_R1.tmp > {params.outdir}/{wildcards.name}_ONE_R1.tmp
+        paste -d '_' {params.outdir}/{wildcards.name}_ONE_R1.tmp {params.outdir}/{wildcards.name}_UMI.tmp \
+        > {params.outdir}/{wildcards.name}_FIXED_1_R1.tmp
+        awk '{{print $1}}' {params.outdir}/{wildcards.name}_ALL_R2.tmp > {params.outdir}/{wildcards.name}_ONE_R2.tmp
+        paste -d '_' {params.outdir}/{wildcards.name}_ONE_R2.tmp {params.outdir}/{wildcards.name}_UMI.tmp \
+        > {params.outdir}/{wildcards.name}_FIXED_1_R2.tmp
+        
+        awk '{{print $2}}' {params.outdir}/{wildcards.name}_ALL_R1.tmp > {params.outdir}/{wildcards.name}_TWO_R1.tmp
+        awk '{{print $4}}' {params.outdir}/{wildcards.name}_ALL_R1.tmp > {params.outdir}/{wildcards.name}_FOUR_R1.tmp
+        awk '{{print $2}}' {params.outdir}/{wildcards.name}_ALL_R2.tmp > {params.outdir}/{wildcards.name}_TWO_R2.tmp
+        awk '{{print $4}}' {params.outdir}/{wildcards.name}_ALL_R2.tmp > {params.outdir}/{wildcards.name}_FOUR_R2.tmp
+        
+        paste -d ' ' {params.outdir}/{wildcards.name}_FIXED_1_R1.tmp {params.outdir}/{wildcards.name}_TWO_R1.tmp \
+        > {params.outdir}/{wildcards.name}_FIXED_1_2_R1.tmp
+        paste {params.outdir}/{wildcards.name}_FIXED_1_2_R1.tmp {params.outdir}/{wildcards.name}_FIXED_3_R1.tmp \
+        {params.outdir}/{wildcards.name}_FOUR_R1.tmp {params.outdir}/{wildcards.name}_FIXED_5_R1.tmp \
+        | sed {params.subs:q} > {params.outdir}/{wildcards.name}_R1_trimmed_umied.fastq
+        gzip {params.outdir}/{wildcards.name}_R1_trimmed_umied.fastq
+        paste -d ' ' {params.outdir}/{wildcards.name}_FIXED_1_R2.tmp {params.outdir}/{wildcards.name}_TWO_R2.tmp \
+        > {params.outdir}/{wildcards.name}_FIXED_1_2_R2.tmp
+        paste {params.outdir}/{wildcards.name}_FIXED_1_2_R2.tmp {params.outdir}/{wildcards.name}_FIXED_3_R2.tmp \
+        {params.outdir}/{wildcards.name}_FOUR_R2.tmp {params.outdir}/{wildcards.name}_FIXED_5_R2.tmp \
+        | sed {params.subs:q} > {params.outdir}/{wildcards.name}_R2_trimmed_umied.fastq
+        gzip {params.outdir}/{wildcards.name}_R2_trimmed_umied.fastq
+        
+        rm {params.outdir}/{wildcards.name}*.tmp
+        '''
+
+rule remove_rRNA_tRNA:
+    """
+    Removes rRNA and tRNA mapping reads from fq files.
+    """
+    input:
+        fq1 = "../data/fastq_trimmed_umied/{name}_R1_trimmed_umied.fastq.gz",
+        fq2 = "../data/fastq_trimmed_umied/{name}_R2_trimmed_umied.fastq.gz",
+        ref = "../data/rRNA_tRNA_ref"
+    output:
+        "../data/fastq_trimmed_umied_filt/{name}_R1_trimmed_umied_filt.fastq.gz",
+        "../data/fastq_trimmed_umied_filt/{name}_R2_trimmed_umied_filt.fastq.gz"
+    params:
+        outdir="../data/fastq_trimmed_umied_filt",
+        awk_R1=r"""{print $1,$2"\n"$3"\n"$4"\n"$5}""",
+        awk_R2=r"""{print $1,$6"\n"$7"\n"$8"\n"$9}"""
+    threads: 12
+    resources: cpus=12, mem_mb=25000, time_min=300
+    shell:
+        '''
+        #!/bin/bash
+        module load hisat2/2.2.1
+        
+        hisat2 --threads {threads} --un {params.outdir}/{wildcards.name}_R1_filt.fastq.tmp -x {input.ref}/rRNAs_tRNAs \
+        -U {input.fq1} -S {params.outdir}/{wildcards.name}_R1_filt.sam.tmp
+        
+        # filter R2 from R1 unmapped
+        cat {params.outdir}/{wildcards.name}_R1_filt.fastq.tmp | paste - - - - | sort -k1,1 \
+        > {params.outdir}/{wildcards.name}_R1_filt_sorted.fastq.tmp
+        zcat {input.fq2} | paste - - - - | sort -k1,1 > {params.outdir}/{wildcards.name}_R2_sorted.fastq.tmp
+        join -1 1 -2 1 {params.outdir}/{wildcards.name}_R1_filt_sorted.fastq.tmp \
+        {params.outdir}/{wildcards.name}_R2_sorted.fastq.tmp \
+        > {params.outdir}/{wildcards.name}_R1_R2_sorted_merged.tmp
+        
+        awk {params.awk_R1:q} {params.outdir}/{wildcards.name}_R1_R2_sorted_merged.tmp \
+        > {params.outdir}/{wildcards.name}_R1_trimmed_umied_filt.fastq
+        gzip {params.outdir}/{wildcards.name}_R1_trimmed_umied_filt.fastq
+        awk {params.awk_R2:q} {params.outdir}/{wildcards.name}_R1_R2_sorted_merged.tmp \
+        > {params.outdir}/{wildcards.name}_R2_trimmed_umied_filt.fastq
+        gzip {params.outdir}/{wildcards.name}_R2_trimmed_umied_filt.fastq
+        
+        rm {params.outdir}/{wildcards.name}*.tmp
+        '''
+
+rule unique_mapping_deduplicated:
+    """
+    Aligns reads to reference genome, selects uniquely mapping reads and removes PCR duplicates.
+    """
+    input:
+        fq1 = "../data/fastq_trimmed_umied_filt/{name}_R1_trimmed_umied_filt.fastq.gz",
+        fq2 = "../data/fastq_trimmed_umied_filt/{name}_R2_trimmed_umied_filt.fastq.gz",
+        ref = "../data/genome_ref"
+    output:
+        "../analyses/aligned_uniq_dedup/{name}_trimmed_umied_filt_uniqmap_rmdup.bam",
+        "../analyses/aligned_uniq_dedup/{name}_trimmed_umied_filt_uniqmap_rmdup.bam.bai",
+        "../analyses/aligned_uniq_dedup/{name}_uniqmap_read_counts.txt",
+        "../analyses/aligned_uniq_dedup/{name}_uniqmap_rmdup_read_counts.txt"
+    params:
+        outdir="../analyses/aligned_uniq_dedup"
+    threads: 12
+    resources: cpus=12, mem_mb=25000, time_min=300
+    shell:
+        '''
+        #!/bin/bash
+        module load hisat2/2.2.1 samtools/1.14 umi_tools
+        
+        hisat2 --threads {threads} --no-unal -x {input.ref}/GRCm38.primary_assembly.genome -1 {input.fq1} -2 {input.fq2} \
+        -S {params.outdir}/{wildcards.name}_trimmed_umied_filt.sam.tmp
+        samtools view -H {params.outdir}/{wildcards.name}_trimmed_umied_filt.sam.tmp \
+        > {params.outdir}/{wildcards.name}_header.tmp
+        samtools view -@ {threads} {params.outdir}/{wildcards.name}_trimmed_umied_filt.sam.tmp | grep 'NH:i:1' \
+        > {params.outdir}/{wildcards.name}_unique.tmp
+        cat {params.outdir}/{wildcards.name}_header.tmp {params.outdir}/{wildcards.name}_unique.tmp \
+        > {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap.sam.tmp
+        
+        samtools view -@ {threads} -b {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap.sam.tmp \
+        -o {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap.bam.tmp
+        samtools sort -@ {threads} {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap.bam.tmp \
+        -o {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap.sorted.bam.tmp
+        samtools index {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap.sorted.bam.tmp
+        samtools view -@ {threads} --count {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap.sorted.bam.tmp \
+        &> {params.outdir}/{wildcards.name}_uniqmap_read_counts.txt
+        
+        umi_tools dedup -I {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap.sorted.bam.tmp --paired \
+        -S {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap_rmdup.bam
+        samtools index {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap_rmdup.bam
+        samtools view -@ {threads} --count {params.outdir}/{wildcards.name}_trimmed_umied_filt_uniqmap_rmdup.bam \
+        &> {params.outdir}/{wildcards.name}_uniqmap_rmdup_read_counts.txt
+        
+        rm {params.outdir}/{wildcards.name}*.tmp {params.outdir}/{wildcards.name}*.tmp.bai
+        '''
+
+rule get_scaled_bedgraph:
+    """
+    Generates scaled genome coverage profiles using a scaling factor relative to the sequencing depth of the HaloTag control library.
+    """
+    input:
+        bam = "../analyses/aligned_uniq_dedup/{name}_trimmed_umied_filt_uniqmap_rmdup.bam",
+        scales = "../data/scales/scales.tsv"
+    output:
+        "../analyses/scaled_bedgraph/{name}.scaled.bedgraph"
+    params:
+        outdir="../analyses/scaled_bedgraph",
+        awk_scale=r"""-F'\t' '{print $2}'"""
+    threads: 2
+    resources: cpus=2, mem_mb=5000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        module load bedtools/2.29.2
+        
+        SCALE=`grep -e {wildcards.name} {input.scales} | awk {params.awk_scale}`
+        
+        bedtools genomecov -bga -split -trackline -scale $SCALE -ibam {input.bam} \
+        > {params.outdir}/{wildcards.name}.scaled.bedgraph
+        '''
+
+rule subtract_HALO_vs_INPUT:
+    """
+    Subtracts the HaloTag signal from Input and vice versa.
+    """
+    input:
+        halo = "../analyses/scaled_bedgraph/HALO.scaled.bedgraph",
+        inpt = "../analyses/scaled_bedgraph/INPUT.scaled.bedgraph"
+    output:
+        "../analyses/scaled_bedgraph/INPUT_minusHALO.scaled.bedgraph",
+        "../analyses/scaled_bedgraph/HALO_minusINPUT.scaled.bedgraph"
+    params:
+        outdir="../analyses/scaled_bedgraph",
+        subs=r"""s/ /\t/g"""
+    threads: 2
+    resources: cpus=2, mem_mb=5000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        module load macs2/2.2.7.1 bedtools/2.29.2
+        
+        function comp_bdg () {{
+            NAME1=`basename ${{1:?}}`
+            NAME2=`basename ${{2:?}}`
+            
+            macs2 bdgcmp -t ${{1:?}} -c ${{2:?}} -m ${{3:?}} -p ${{4:?}} -o ${{5:?}}/${{NAME1}}_minus_${{NAME2}}.bdg.tmp
+
+            grep 'chr' ${{5:?}}/${{NAME1}}_minus_${{NAME2}}.bdg.tmp > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr.bdg.tmp
+            awk '{{if($4>=0){{print $0}}}}' ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr.bdg.tmp \
+            | sed {params.subs:q} > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_pos.bdg.tmp
+            awk '{{if($4<0){{print $1,$2,$3,"0"}}}}' ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr.bdg.tmp \
+            | sed {params.subs:q} > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_neg_corrected.bdg.tmp
+            cat ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_pos.bdg.tmp \
+            ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_neg_corrected.bdg.tmp \
+            > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_unsorted.bdg.tmp
+            bedtools sort -i ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_unsorted.bdg.tmp
+        }}
+        
+        tail -n+2 {input.halo} > {params.outdir}/halo.bdg.tmp
+        tail -n+2 {input.inpt} > {params.outdir}/input.bdg.tmp
+        
+        # subtract HALO from INPUT
+        comp_bdg {params.outdir}/input.bdg.tmp {params.outdir}/halo.bdg.tmp \
+        subtract 0 {params.outdir} > {params.outdir}/INPUT_minusHALO.scaled.bedgraph
+        
+        # subtract INPUT from HALO
+        comp_bdg {params.outdir}/halo.bdg.tmp {params.outdir}/input.bdg.tmp \
+        subtract 0 {params.outdir} > {params.outdir}/HALO_minusINPUT.scaled.bedgraph
+        
+        rm {params.outdir}/*.tmp
+        '''
+
+rule subtract_HALO_INPUT:
+    """
+    Subtracts the HaloTag and Input signal from RBP coverage files.
+    """
+    input:
+        bdg = "../analyses/scaled_bedgraph/{name_wo_halo_input}.scaled.bedgraph",
+        halo = "../analyses/scaled_bedgraph/HALO.scaled.bedgraph",
+        inpt_minus_halo = "../analyses/scaled_bedgraph/INPUT_minusHALO.scaled.bedgraph"
+    output:
+        "../analyses/subtracted_halo_input/{name_wo_halo_input}_minusHALO_minusINPUT.bdg"
+    params:
+        outdir="../analyses/subtracted_halo_input",
+        subs=r"""s/ /\t/g"""
+    threads: 2
+    resources: cpus=2, mem_mb=5000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        module load macs2/2.2.7.1 bedtools/2.29.2
+        
+        function comp_bdg () {{
+            NAME1=`basename ${{1:?}}`
+            NAME2=`basename ${{2:?}}`
+            
+            macs2 bdgcmp -t ${{1:?}} -c ${{2:?}} -m ${{3:?}} -p ${{4:?}} -o ${{5:?}}/${{NAME1}}_minus_${{NAME2}}.bdg.tmp
+
+            grep 'chr' ${{5:?}}/${{NAME1}}_minus_${{NAME2}}.bdg.tmp > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr.bdg.tmp
+            awk '{{if($4>=0){{print $0}}}}' ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr.bdg.tmp \
+            | sed {params.subs:q} > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_pos.bdg.tmp
+            awk '{{if($4<0){{print $1,$2,$3,"0"}}}}' ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr.bdg.tmp \
+            | sed {params.subs:q} > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_neg_corrected.bdg.tmp
+            cat ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_pos.bdg.tmp \
+            ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_neg_corrected.bdg.tmp \
+            > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_unsorted.bdg.tmp
+            bedtools sort -i ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_unsorted.bdg.tmp
+        }}
+        
+        # subtract HALO
+        tail -n+2 {input.bdg} > {params.outdir}/{wildcards.name_wo_halo_input}.bdg.tmp
+        tail -n+2 {input.halo} > {params.outdir}/{wildcards.name_wo_halo_input}_halo.bdg.tmp
+        comp_bdg {params.outdir}/{wildcards.name_wo_halo_input}.bdg.tmp \
+        {params.outdir}/{wildcards.name_wo_halo_input}_halo.bdg.tmp \
+        subtract 0 {params.outdir} > {params.outdir}/{wildcards.name_wo_halo_input}_minusHALO.bdg.tmp
+        
+        # subtract INPUT
+        comp_bdg {params.outdir}/{wildcards.name_wo_halo_input}_minusHALO.bdg.tmp {input.inpt_minus_halo} \
+        subtract 0 {params.outdir} > {params.outdir}/{wildcards.name_wo_halo_input}_minusHALO_minusINPUT.bdg
+        
+        rm {params.outdir}/{wildcards.name_wo_halo_input}*.tmp
+        '''
+
+rule call_peaks:
+    """
+    Finds candidate regions for RBP-RNA interactions.
+    """
+    input:
+        "../analyses/subtracted_halo_input/{name_wo_halo_input}_minusHALO_minusINPUT.bdg"
+    output:
+        "../analyses/peaks/{name_wo_halo_input}_peaks.bed",
+        "../analyses/peaks_fixed/{name_wo_halo_input}_fixed_peaks.bed"
+    params:
+        outdir_peaks="../analyses/peaks",
+        outdir_peaks_fixed="../analyses/peaks_fixed",
+        cutoff=0.5,
+        min_length=20,
+        max_gap=5,
+        subs=r"""s/ /\t/g"""
+    threads: 2
+    resources: cpus=2, mem_mb=5000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        module load macs2/2.2.7.1 bedtools/2.29.2
+        
+        # call peaks
+        grep 'chr' {input} > {params.outdir_peaks}/{wildcards.name_wo_halo_input}_fixed.bdg.tmp
+        bedtools sort -i {params.outdir_peaks}/{wildcards.name_wo_halo_input}_fixed.bdg.tmp \
+        > {params.outdir_peaks}/{wildcards.name_wo_halo_input}_fixed_sorted.bdg.tmp
+        macs2 bdgpeakcall -i {params.outdir_peaks}/{wildcards.name_wo_halo_input}_fixed_sorted.bdg.tmp \
+        -c {params.cutoff} -l {params.min_length} -g {params.max_gap} \
+        -o {params.outdir_peaks}/{wildcards.name_wo_halo_input}_peaks.bed
+        
+        # format peak files
+        awk '{{print $1,$2,$3,$2+$10}}' {params.outdir_peaks}/{wildcards.name_wo_halo_input}_peaks.bed \
+        | grep 'chr' | sed {params.subs:q} > {params.outdir_peaks_fixed}/{wildcards.name_wo_halo_input}_fixed_peaks.bed
+        
+        rm {params.outdir_peaks}/{wildcards.name_wo_halo_input}*.tmp
+        '''
+
+rule get_consensus_peaks:
+    """
+    Retrieves consensus RBP-RNA interaction regions across replicates.
+    """
+    input:
+        rep1 = "../analyses/peaks_fixed/{name_wo_halo_input_no_rep}_rep1_fixed_peaks.bed",
+        rep2 = "../analyses/peaks_fixed/{name_wo_halo_input_no_rep}_rep2_fixed_peaks.bed",
+    output:
+        "../analyses/peaks_consensus/{name_wo_halo_input_no_rep}_consensus_peaks.bed"
+    params:
+        outdir="../analyses/peaks_consensus",
+        subs=r"""s/ /\t/g"""
+    threads: 2
+    resources: cpus=2, mem_mb=5000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        module load bedtools/2.29.2
+        
+        # intersect peaks
+        bedtools intersect -a {input.rep1} -b {input.rep2} -wb | awk '{{print $1,$2,$3,$4,$8,$3-$2,$8-$4}}' \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_consensus_peaks.bed.tmp
+        awk '{{if($6>=20){{print $0}}}}' {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_consensus_peaks.bed.tmp \
+        | awk '{{if($7<11 && $7>-11){{print $0}}}}' | awk '{{if($4>$2 && $4<$3){{print $0}}}}' \
+        | awk '{{if($5>$2 && $5<$3){{print $0}}}}' | sed {params.subs:q} \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_consensus_peaks.bed
+        
+        rm {params.outdir}/{wildcards.name_wo_halo_input_no_rep}*.tmp
+        '''
+
+rule get_pvalues:
+    """
+    Calculates p-values measuring signal enrichment in RBP coverage files compared to that of the HaloTag control 
+    and while controlling for Input background.
+    """
+    input:
+        bdg = "../analyses/scaled_bedgraph/{name_wo_halo_input}.scaled.bedgraph",
+        inpt = "../analyses/scaled_bedgraph/INPUT.scaled.bedgraph",
+        halo_minus_inpt = "../analyses/scaled_bedgraph/HALO_minusINPUT.scaled.bedgraph"
+    output:
+        "../analyses/subtracted_input_pvalues/{name_wo_halo_input}_minusINPUT_pvalues.bdg"
+    params:
+        outdir="../analyses/subtracted_input_pvalues",
+        subs=r"""s/ /\t/g"""
+    threads: 2
+    resources: cpus=2, mem_mb=5000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        module load macs2/2.2.7.1 bedtools/2.29.2
+        
+        function comp_bdg () {{
+            NAME1=`basename ${{1:?}}`
+            NAME2=`basename ${{2:?}}`
+            
+            macs2 bdgcmp -t ${{1:?}} -c ${{2:?}} -m ${{3:?}} -p ${{4:?}} -o ${{5:?}}/${{NAME1}}_minus_${{NAME2}}.bdg.tmp
+
+            grep 'chr' ${{5:?}}/${{NAME1}}_minus_${{NAME2}}.bdg.tmp > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr.bdg.tmp
+            awk '{{if($4>=0){{print $0}}}}' ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr.bdg.tmp \
+            | sed {params.subs:q} > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_pos.bdg.tmp
+            awk '{{if($4<0){{print $1,$2,$3,"0"}}}}' ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr.bdg.tmp \
+            | sed {params.subs:q} > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_neg_corrected.bdg.tmp
+            cat ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_pos.bdg.tmp \
+            ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_chr_neg_corrected.bdg.tmp \
+            > ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_unsorted.bdg.tmp
+            bedtools sort -i ${{5:?}}/${{NAME1}}_minus_${{NAME2}}_unsorted.bdg.tmp
+        }}
+        
+        # subtract INPUT
+        tail -n+2 {input.bdg} > {params.outdir}/{wildcards.name_wo_halo_input}.bdg.tmp
+        tail -n+2 {input.inpt} > {params.outdir}/{wildcards.name_wo_halo_input}_input.bdg.tmp
+        comp_bdg {params.outdir}/{wildcards.name_wo_halo_input}.bdg.tmp \
+        {params.outdir}/{wildcards.name_wo_halo_input}_input.bdg.tmp \
+        subtract 0 {params.outdir} > {params.outdir}/{wildcards.name_wo_halo_input}_minusINPUT.bdg.tmp
+        
+        # compute pvalues
+        comp_bdg {params.outdir}/{wildcards.name_wo_halo_input}_minusINPUT.bdg.tmp {input.halo_minus_inpt} \
+        ppois 1 {params.outdir} > {params.outdir}/{wildcards.name_wo_halo_input}_minusINPUT_pvalues.bdg
+        
+        rm {params.outdir}/{wildcards.name_wo_halo_input}*.tmp
+        '''
+
+rule get_mean_summits:
+    """
+    Calculates summit position of peaks.
+    """
+    input:
+        cons_peaks = "../analyses/peaks_consensus/{name_wo_halo_input_no_rep}_consensus_peaks.bed",
+        get_mean_summits = "../scripts/get_mean_summits.R"
+    output:
+        "../analyses/peaks_consensus_mean_summits/{name_wo_halo_input_no_rep}_consensus_peaks_9nt_summits.bed"
+    params:
+        outdir="../analyses/peaks_consensus_mean_summits"
+    threads: 1
+    resources: cpus=1, mem_mb=5000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        module load r/4.1.1
+        
+        Rscript {input.get_mean_summits} {input.cons_peaks} \
+        {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_consensus_peaks_9nt_summits.bed
+        '''
+
+rule get_stranded_counts:
+    """
+    Retrieves strand-specific counts per peak summit.
+    """
+    input:
+        summits = "../analyses/peaks_consensus_mean_summits/{name_wo_halo_input_no_rep}_consensus_peaks_9nt_summits.bed",
+        rep1_bam = "../analyses/aligned_uniq_dedup/{name_wo_halo_input_no_rep}_rep1_trimmed_umied_filt_uniqmap_rmdup.bam",
+        rep2_bam = "../analyses/aligned_uniq_dedup/{name_wo_halo_input_no_rep}_rep2_trimmed_umied_filt_uniqmap_rmdup.bam"
+    output:
+        "../analyses/peaks_consensus_summits_stranded_counts/{name_wo_halo_input_no_rep}_cons_peaks_stranded_counts.bed"
+    params:
+        outdir="../analyses/peaks_consensus_summits_stranded_counts",
+        subs=r"""s/ /\t/g"""
+    threads: 2
+    resources: cpus=2, mem_mb=5000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        module load bedtools/2.29.2
+        
+        bedtools bamtobed -split -i {input.rep1_bam} | grep '/1' | grep 'chr' | awk '{{if($6=="+"){{print $0}}}}' \
+        | bedtools sort > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_plus_strand.bed.tmp
+        bedtools bamtobed -split -i {input.rep1_bam} | grep '/1' | grep 'chr' | awk '{{if($6=="-"){{print $0}}}}' \
+        | bedtools sort > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_minus_strand.bed.tmp
+        
+        bedtools map -a {input.summits} -b {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_plus_strand.bed.tmp \
+        -o count -c 1 > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_plus_strand_counts.bed.tmp
+        bedtools map -a {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_plus_strand_counts.bed.tmp \
+        -b {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_minus_strand.bed.tmp -o count -c 1 \
+        | awk '{{if($6>=5 || $7>=5){{print $1,$2,$3,$4,$5,$6+0.1,$7+0.1}}}}' | sed {params.subs:q} \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_plus_minus_strand_counts.bed.tmp
+        
+        awk '{{if($6/$7>=10){{print $1,$2,$3,$4,$5,"+",$6-0.1}}}}' \
+        {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_plus_minus_strand_counts.bed.tmp | sed {params.subs:q} \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_plus_strand_counts_10fold.bed.tmp
+        awk '{{if($7/$6>=10){{print $1,$2,$3,$4,$5,"-",$7-0.1}}}}' \
+        {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_plus_minus_strand_counts.bed.tmp | sed {params.subs:q} \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_minus_strand_counts_10fold.bed.tmp
+        cat {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_plus_strand_counts_10fold.bed.tmp \
+        {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_minus_strand_counts_10fold.bed.tmp \
+        | bedtools sort > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_cons_peaks_stranded_counts.bed.tmp
+        
+        bedtools bamtobed -split -i {input.rep2_bam} | grep '/1' | grep 'chr' | bedtools sort \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep2.bed.tmp
+        bedtools map -a {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_cons_peaks_stranded_counts.bed.tmp \
+        -b {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep2.bed.tmp -s -o count -c 1 \
+        | awk '{{if($8>=5){{print $0}}}}' \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_stranded_counts.bed
+        
+        rm {params.outdir}/{wildcards.name_wo_halo_input_no_rep}*.tmp
+        '''
+
+rule score_regions:
+    """
+    Add scoring information to peak summit files.
+    """
+    input:
+        cons_peaks_counts = "../analyses/peaks_consensus_summits_stranded_counts/{name_wo_halo_input_no_rep}_cons_peaks_stranded_counts.bed",
+        rep1_pvals = "../analyses/subtracted_input_pvalues/{name_wo_halo_input_no_rep}_rep1_minusINPUT_pvalues.bdg",
+        rep2_pvals = "../analyses/subtracted_input_pvalues/{name_wo_halo_input_no_rep}_rep2_minusINPUT_pvalues.bdg",
+        rep1_bdg = "../analyses/scaled_bedgraph/{name_wo_halo_input_no_rep}_rep1.scaled.bedgraph",
+        rep2_bdg = "../analyses/scaled_bedgraph/{name_wo_halo_input_no_rep}_rep2.scaled.bedgraph",
+        halo = "../analyses/scaled_bedgraph/HALO.scaled.bedgraph",
+        inpt = "../analyses/scaled_bedgraph/INPUT.scaled.bedgraph"
+    output:
+        "../analyses/peaks_consensus_summits_scored/{name_wo_halo_input_no_rep}_cons_peaks_scored.bed"
+    params:
+        outdir="../analyses/peaks_consensus_summits_scored"
+    threads: 2
+    resources: cpus=2, mem_mb=5000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        module load bedtools/2.29.2
+        
+        tail -n+2 {input.halo} | grep 'chr' | bedtools sort \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_HALO.bdg.tmp
+        tail -n+2 {input.inpt} | grep 'chr' | bedtools sort \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_INPUT.bdg.tmp
+        
+        tail -n+2 {input.rep1_bdg} | grep 'chr' | bedtools sort \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1.bdg.tmp
+        tail -n+2 {input.rep2_bdg} | grep 'chr' | bedtools sort \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep2.bdg.tmp
+        
+        bedtools sort -i {input.rep1_pvals} | grep 'chr' \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_pvalues_sorted.bdg.tmp
+        bedtools sort -i {input.rep2_pvals} | grep 'chr' \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep2_pvalues_sorted.bdg.tmp
+        
+        bedtools sort -i {input.cons_peaks_counts} | grep 'chr' \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_counts_sorted.bdg.tmp
+        
+        bedtools map -a {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_counts_sorted.bdg.tmp \
+        -b {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1_pvalues_sorted.bdg.tmp -c 4 -o max  \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_rep1_pval.bdg.tmp
+        bedtools map -a {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_rep1_pval.bdg.tmp \
+        -b {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep2_pvalues_sorted.bdg.tmp -c 4 -o max \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_rep1_rep2_pval.bdg.tmp
+        
+        bedtools map -a {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_rep1_rep2_pval.bdg.tmp \
+        -b {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep1.bdg.tmp -c 4 -o mean \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_rep1_rep2_pval_rep1_signal.bdg.tmp
+        bedtools map -a {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_rep1_rep2_pval_rep1_signal.bdg.tmp \
+        -b {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_rep2.bdg.tmp -c 4 -o mean \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_rep1_rep2_pval_signal.bdg.tmp
+        bedtools map -a {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_rep1_rep2_pval_signal.bdg.tmp \
+        -b {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_HALO.bdg.tmp -c 4 -o mean \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_rep1_rep2_pval_signal_HALO.bdg.tmp
+        bedtools map -a {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_rep1_rep2_pval_signal_HALO.bdg.tmp \
+        -b {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_INPUT.bdg.tmp -c 4 -o mean \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored.bed
+        
+        rm {params.outdir}/{wildcards.name_wo_halo_input_no_rep}*.tmp
+        '''
+
+rule get_sequences:
+    """
+    Retrieves 200nt sequences around peak summits and of control regions 1000nt downstream of these. 
+    """
+    input:
+        cons_peaks_scored = "../analyses/peaks_consensus_summits_scored/{name_wo_halo_input_no_rep}_cons_peaks_scored.bed",
+        ref_genome = "../data/genome_ref/GRCm38.primary_assembly.genome.fa"
+    output:
+        "../analyses/peaks_consensus_summits_scored_w_seqs/{name_wo_halo_input_no_rep}_cons_peaks_scored_w_seqs.bed"
+    params:
+        outdir="../analyses/peaks_consensus_summits_scored_w_seqs",
+        subs=r"""s/ /\t/g"""
+    threads: 2
+    resources: cpus=2, mem_mb=5000, time_min=30
+    shell:
+        '''
+        #!/bin/bash
+        module load bedtools/2.29.2
+        
+        {{ grep -v 'chrM' {input.cons_peaks_scored} || true; }} | awk '{{if($2>96){{print $0}}}}' \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_wo_chrM.bed.tmp
+        {{ grep 'chrM' {input.cons_peaks_scored} || true; }} | awk '{{if($2>100 && $3<15460){{print $0}}}}' \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_w_chrM.bed.tmp
+        cat {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_wo_chrM.bed.tmp \
+        {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_w_chrM.bed.tmp \
+        | bedtools sort > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_filt.bed.tmp
+        
+        awk '{{print $1,$2-96,$3+96,$4,$5,$6}}' {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_filt.bed.tmp \
+        | sed {params.subs:q} > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_filt_pos.bed.tmp
+        awk '{{print $1,$2+1000,$3+1000,$4,$5,$6}}' {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_filt_pos.bed.tmp \
+        | sed {params.subs:q} > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_filt_neg.bed.tmp
+        
+        bedtools getfasta -s -fi {input.ref_genome} \
+        -bed {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_filt_pos.bed.tmp \
+        | {{ grep -v '>' || true; }} > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_pos_seqs.tmp
+        bedtools getfasta -s -fi {input.ref_genome} \
+        -bed {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_filt_neg.bed.tmp \
+        | {{ grep -v '>' || true; }} > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_neg_seqs.tmp
+        
+        paste {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_filt.bed.tmp \
+        {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_pos_seqs.tmp \
+        {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_neg_seqs.tmp \
+        > {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_w_seqs.bed
+             
+        rm {params.outdir}/{wildcards.name_wo_halo_input_no_rep}*.tmp
+        touch {params.outdir}/{wildcards.name_wo_halo_input_no_rep}_cons_peaks_scored_w_seqs.bed
+        '''

@@ -1,0 +1,17 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 1 (use --cores to define parallelism)
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:51:51 2022]
+rule get_mean_summits:
+    input: ../analyses/peaks_consensus/IGF2BP1_consensus_peaks.bed, ../scripts/get_mean_summits.R
+    output: ../analyses/peaks_consensus_mean_summits/IGF2BP1_consensus_peaks_9nt_summits.bed
+    jobid: 0
+    wildcards: name_wo_halo_input_no_rep=IGF2BP1
+    resources: mem_mb=5000, disk_mb=1000, tmpdir=/tmp, cpus=1, time_min=30
+
+[Tue Jul  5 17:51:53 2022]
+Finished job 0.
+1 of 1 steps (100%) done

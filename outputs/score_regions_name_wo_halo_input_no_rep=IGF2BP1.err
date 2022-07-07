@@ -1,0 +1,18 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 2
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:52:12 2022]
+rule score_regions:
+    input: ../analyses/peaks_consensus_summits_stranded_counts/IGF2BP1_cons_peaks_stranded_counts.bed, ../analyses/subtracted_input_pvalues/IGF2BP1_rep1_minusINPUT_pvalues.bdg, ../analyses/subtracted_input_pvalues/IGF2BP1_rep2_minusINPUT_pvalues.bdg, ../analyses/scaled_bedgraph/IGF2BP1_rep1.scaled.bedgraph, ../analyses/scaled_bedgraph/IGF2BP1_rep2.scaled.bedgraph, ../analyses/scaled_bedgraph/HALO.scaled.bedgraph, ../analyses/scaled_bedgraph/INPUT.scaled.bedgraph
+    output: ../analyses/peaks_consensus_summits_scored/IGF2BP1_cons_peaks_scored.bed
+    jobid: 0
+    wildcards: name_wo_halo_input_no_rep=IGF2BP1
+    threads: 2
+    resources: mem_mb=5000, disk_mb=1000, tmpdir=/tmp, cpus=2, time_min=30
+
+[Tue Jul  5 17:52:12 2022]
+Finished job 0.
+1 of 1 steps (100%) done

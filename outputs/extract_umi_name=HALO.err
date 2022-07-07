@@ -1,0 +1,18 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 4
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:48:10 2022]
+rule extract_umi:
+    input: ../data/fastq_trimmed/HALO_R1_trimmed.fastq.gz, ../data/fastq_trimmed/HALO_R2_trimmed.fastq.gz
+    output: ../data/fastq_trimmed_umied/HALO_R1_trimmed_umied.fastq.gz, ../data/fastq_trimmed_umied/HALO_R2_trimmed_umied.fastq.gz
+    jobid: 0
+    wildcards: name=HALO
+    threads: 4
+    resources: mem_mb=8000, disk_mb=1000, tmpdir=/tmp, cpus=4, time_min=30
+
+[Tue Jul  5 17:48:46 2022]
+Finished job 0.
+1 of 1 steps (100%) done

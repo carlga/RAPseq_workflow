@@ -1,0 +1,18 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 2
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:52:21 2022]
+rule get_sequences:
+    input: ../analyses/peaks_consensus_summits_scored/IGF2BP1_cons_peaks_scored.bed, ../data/genome_ref/GRCm38.primary_assembly.genome.fa
+    output: ../analyses/peaks_consensus_summits_scored_w_seqs/IGF2BP1_cons_peaks_scored_w_seqs.bed
+    jobid: 0
+    wildcards: name_wo_halo_input_no_rep=IGF2BP1
+    threads: 2
+    resources: mem_mb=5000, disk_mb=5296, tmpdir=/tmp, cpus=2, time_min=30
+
+[Tue Jul  5 17:52:21 2022]
+Finished job 0.
+1 of 1 steps (100%) done

@@ -1,0 +1,24 @@
+Building DAG of jobs...
+Using shell: /shared/software/jupyterhub/bin/bash
+Provided cores: 12
+Rules claiming more threads will be scaled down.
+Select jobs to execute...
+
+[Tue Jul  5 17:48:40 2022]
+rule remove_rRNA_tRNA:
+    input: ../data/fastq_trimmed_umied/IGF2BP1_rep2_R1_trimmed_umied.fastq.gz, ../data/fastq_trimmed_umied/IGF2BP1_rep2_R2_trimmed_umied.fastq.gz, ../data/rRNA_tRNA_ref
+    output: ../data/fastq_trimmed_umied_filt/IGF2BP1_rep2_R1_trimmed_umied_filt.fastq.gz, ../data/fastq_trimmed_umied_filt/IGF2BP1_rep2_R2_trimmed_umied_filt.fastq.gz
+    jobid: 0
+    wildcards: name=IGF2BP1_rep2
+    threads: 12
+    resources: mem_mb=25000, disk_mb=1000, tmpdir=/tmp, cpus=12, time_min=300
+
+384931 reads; of these:
+  384931 (100.00%) were unpaired; of these:
+    86519 (22.48%) aligned 0 times
+    11351 (2.95%) aligned exactly 1 time
+    287061 (74.57%) aligned >1 times
+77.52% overall alignment rate
+[Tue Jul  5 17:49:32 2022]
+Finished job 0.
+1 of 1 steps (100%) done

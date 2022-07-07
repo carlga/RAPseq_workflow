@@ -1,0 +1,12 @@
+cluster: "sbatch --account form_2022_19
+    --partition fast
+    --cpus-per-task {resources.cpus}
+    --time {resources.time_min}
+    --mem {resources.mem_mb}
+    --job-name {rule}_{wildcards}
+    --output ../outputs/{rule}_{wildcards}.out
+    --error ../outputs/{rule}_{wildcards}.err"
+jobs: 8
+default-resources: [cpus=1, mem_mb=1000, time_min=5]
+resources: [cpus=200, mem_mb=250000]
+latency-wait: 20
