@@ -7,7 +7,7 @@
 | ***RAPseq Workflow. Credit to I. Atanasoai*** |
 
 **Citation:**
-> Atanasoai I, Papavasileiou S, Preiß N, Kutter C. Large-scale identification of RBP-RNA interactions by RAPseq refines essentials of post-transcriptional gene regulation. bioRxiv. 2021:2021.11.08.467743.
+> Mosca R, Gallardo-Dodd C J, Li Q, Sommerauer C, Šidiškis J, Søndergaard J N, Kutter C. RAPseq enables large-scale identification of RBP-RNA interactions and reveals essentials of post-transcriptional gene regulation. Nucleic Acids Res. 2026.
 
 
 ## Usage
